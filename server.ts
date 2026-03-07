@@ -1,16 +1,12 @@
 import express from "express";
 import mongoose from "mongoose";
-import dotenv from "dotenv";
 
-dotenv.config();
+// 1. Connect Directly to Your MongoDB Vault
+const MONGODB_URI = "mongodb+srv://msdelivery216_db_user:msdelivery123@msdelivery.gikxgjo.mongodb.net/?appName=MSDELIVERY";
 
-// 1. Connect to MongoDB Cloud Database
-const MONGODB_URI = process.env.MONGODB_URI || "";
-if (MONGODB_URI) {
-  mongoose.connect(MONGODB_URI)
-    .then(() => console.log("Successfully connected to MongoDB!"))
-    .catch(err => console.error("MongoDB connection error:", err));
-}
+mongoose.connect(MONGODB_URI)
+  .then(() => console.log("✅ Successfully connected to MongoDB!"))
+  .catch(err => console.error("❌ MongoDB connection error:", err));
 
 // 2. Define the MongoDB Blueprints
 const clientSchema = new mongoose.Schema({
@@ -46,11 +42,17 @@ const profileSchema = new mongoose.Schema({
 });
 const Profile = mongoose.model("Profile", profileSchema);
 
-// 3. Initialize Server
+// 3. Initialize the Vercel-Friendly Server
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
-const formatDoc = (doc: any) => ({ ...doc.toObject(), id: doc._id });
+// This translator ensures your frontend doesn't break when switching to MongoDB IDs
+const formatDoc = (doc: any) => {
+  const obj = doc.toObject();
+  obj.id = obj._id.toString();
+  delete obj._id;
+  return obj;
+};
 
 // --- API Routes ---
 
@@ -61,7 +63,22 @@ app.get("/api/clients", async (req, res) => {
 
 app.post("/api/clients", async (req, res) => {
   const newClient = await Client.create(req.body);
-  res.json({ id: newClient._id });
+  res.json({ id: newClient._id.toString() });
+});
+
+app.put("/api/clients/:id", async (req, res) => {
+  await Client.findByIdAndUpdate(req.params.id, req.body);
+  res.json({ success: true });
+});
+
+app.delete("/api/clients/:id", async (req, res) => {
+  await Client.findByIdAndDelete(req.params.id);
+  res.json({ success: true });
+});
+
+app.post("/api/clients/bulk-delete", async (req, res) => {
+  await Client.deleteMany({ _id: { $in: req.body.ids } });
+  res.json({ success: true });
 });
 
 app.get("/api/orders", async (req, res) => {
@@ -69,7 +86,7 @@ app.get("/api/orders", async (req, res) => {
   const formattedOrders = orders.map(o => {
     const orderObj = formatDoc(o);
     orderObj.clientName = o.clientId ? (o.clientId as any).clientName : null;
-    orderObj.clientId = o.clientId ? (o.clientId as any)._id : null;
+    orderObj.clientId = o.clientId ? (o.clientId as any)._id.toString() : null;
     return orderObj;
   });
   res.json(formattedOrders);
@@ -78,10 +95,25 @@ app.get("/api/orders", async (req, res) => {
 app.post("/api/orders", async (req, res) => {
   try {
     const newOrder = await Order.create(req.body);
-    res.json({ id: newOrder._id });
+    res.json({ id: newOrder._id.toString() });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }
+});
+
+app.put("/api/orders/:id", async (req, res) => {
+  await Order.findByIdAndUpdate(req.params.id, req.body);
+  res.json({ success: true });
+});
+
+app.delete("/api/orders/:id", async (req, res) => {
+  await Order.findByIdAndDelete(req.params.id);
+  res.json({ success: true });
+});
+
+app.post("/api/orders/bulk-delete", async (req, res) => {
+  await Order.deleteMany({ _id: { $in: req.body.ids } });
+  res.json({ success: true });
 });
 
 app.get("/api/profile", async (req, res) => {
@@ -94,6 +126,11 @@ app.get("/api/profile", async (req, res) => {
     });
   }
   res.json(formatDoc(profile));
+});
+
+app.put("/api/profile", async (req, res) => {
+  await Profile.findOneAndUpdate({}, req.body, { upsert: true });
+  res.json({ success: true });
 });
 
 // Export the app for Vercel Serverless Functions
