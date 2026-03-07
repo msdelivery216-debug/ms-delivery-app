@@ -1,15 +1,15 @@
 export interface Client {
-  id: number;
+  id: string;
   clientName: string;
   clientAddress: string;
   clientContact: string;
 }
 
 export interface Order {
-  id: number;
+  id: string;
   orderNumber: string;
   orderDate: string;
-  clientId: number;
+  clientId: string;
   clientName?: string;
   pickupLocation: string;
   customerName: string;
