@@ -1,172 +1,60 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Building2, 
-  User, 
-  Mail, 
-  Image as ImageIcon, 
-  Save, 
-  CheckCircle2,
-  Upload
-} from 'lucide-react';
-import { Profile } from '../types';
+import { VercelRequest, VercelResponse } from '@vercel/node';
+import { MongoClient } from 'mongodb';
 
-export default function ProfileSection() {
-  const [profile, setProfile] = useState<Profile>({
-    companyName: '',
-    ownerName: '',
-    contactEmail: '',
-    logoUrl: ''
-  });
-  const [showToast, setShowToast] = useState(false);
-  const [loading, setLoading] = useState(true);
+// 1. Create the client outside the handler to reuse the connection
+const client = new MongoClient(process.env.MONGODB_URI || '');
+let cachedDb: any = null;
 
-  useEffect(() => {
-    setLoading(true);
-    fetch('/api/profile')
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
-        if (data) setProfile(data);
-      })
-      .catch(err => console.error("Profile fetch error:", err))
-      .finally(() => setLoading(false)); // This stops the "Loading..." text
-  }, []);
+async function connectToDatabase() {
+  if (cachedDb) return cachedDb;
+  await client.connect();
+  // IMPORTANT: Make sure this matches your DB name in MongoDB Atlas
+  const db = client.db('ms-delivery'); 
+  cachedDb = db;
+  return db;
+}
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setProfile({ ...profile, logoUrl: reader.result as string });
-      };
-      reader.readAsDataURL(file);
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Add CORS headers so the frontend can talk to the backend
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  try {
+    const db = await connectToDatabase();
+    const collection = db.collection('profile');
+
+    if (req.method === 'GET') {
+      const profile = await collection.findOne({});
+      return res.status(200).json(profile || { 
+        companyName: '', 
+        ownerName: '', 
+        contactEmail: '', 
+        logoUrl: '' 
+      });
     }
-  };
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const res = await fetch('/api/profile', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(profile)
-    });
-    
-    if (res.ok) {
-      setShowToast(true);
-      setTimeout(() => setShowToast(false), 3000);
+    if (req.method === 'PUT') {
+      const updatedProfile = req.body;
+      // We don't want to save the MongoDB _id if it's already there
+      const { _id, ...profileData } = updatedProfile;
+      
+      await collection.updateOne(
+        {}, 
+        { $set: profileData }, 
+        { upsert: true }
+      );
+      return res.status(200).json({ message: 'Success' });
     }
-  };
 
-  if (loading) return <div>Loading...</div>;
-
-  return (
-    <div className="max-w-4xl mx-auto space-y-12">
-      <div>
-        <h1 className="text-3xl font-bold text-neutral-900">Business Profile</h1>
-        <p className="text-neutral-500">Customize your company details and branding.</p>
-      </div>
-
-      <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        {/* Logo Section */}
-        <div className="md:col-span-1 space-y-6">
-          <div className="bg-white p-8 rounded-[2.5rem] border border-neutral-100 shadow-sm text-center space-y-6">
-            <div className="relative group mx-auto w-32 h-32">
-              {profile.logoUrl ? (
-                <img 
-                  src={profile.logoUrl} 
-                  alt="Logo" 
-                  className="w-full h-full rounded-3xl object-cover border-4 border-neutral-50"
-                />
-              ) : (
-                <div className="w-full h-full bg-neutral-50 rounded-3xl flex items-center justify-center text-neutral-300 border-2 border-dashed border-neutral-200">
-                  <ImageIcon className="w-10 h-10" />
-                </div>
-              )}
-              <label className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 rounded-3xl cursor-pointer transition-all backdrop-blur-[2px]">
-                <Upload className="w-6 h-6 text-white" />
-                <input type="file" className="hidden" accept="image/*" onChange={handleLogoUpload} />
-              </label>
-            </div>
-            <div>
-              <h3 className="font-bold text-neutral-900">Company Logo</h3>
-              <p className="text-xs text-neutral-500 mt-1">PNG, JPG up to 5MB</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Details Section */}
-        <div className="md:col-span-2 space-y-6">
-          <div className="bg-white p-8 md:p-10 rounded-[2.5rem] border border-neutral-100 shadow-sm space-y-8">
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-neutral-700 ml-1">Company Name</label>
-              <div className="relative">
-                <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
-                <input 
-                  required
-                  type="text"
-                  value={profile.companyName}
-                  onChange={(e) => setProfile({...profile, companyName: e.target.value})}
-                  className="w-full pl-12 pr-4 py-4 bg-neutral-50 border border-neutral-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                  placeholder="e.g. MS Delivery Services"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-neutral-700 ml-1">Owner Name</label>
-              <div className="relative">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
-                <input 
-                  required
-                  type="text"
-                  value={profile.ownerName}
-                  onChange={(e) => setProfile({...profile, ownerName: e.target.value})}
-                  className="w-full pl-12 pr-4 py-4 bg-neutral-50 border border-neutral-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                  placeholder="Full name"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-neutral-700 ml-1">Contact Email</label>
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
-                <input 
-                  required
-                  type="email"
-                  value={profile.contactEmail}
-                  onChange={(e) => setProfile({...profile, contactEmail: e.target.value})}
-                  className="w-full pl-12 pr-4 py-4 bg-neutral-50 border border-neutral-200 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-                  placeholder="admin@msdelivery.com"
-                />
-              </div>
-            </div>
-
-            <button 
-              type="submit"
-              className="w-full py-5 bg-neutral-900 text-white font-bold text-lg rounded-3xl hover:bg-neutral-800 transition-all shadow-xl shadow-neutral-200 flex items-center justify-center gap-3"
-            >
-              <Save className="w-6 h-6" />
-              Save Changes
-            </button>
-          </div>
-        </div>
-      </form>
-
-      {/* Toast Notification */}
-      <AnimatePresence>
-        {showToast && (
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-8 right-8 bg-emerald-600 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 z-[100]"
-          >
-            <CheckCircle2 className="w-6 h-6" />
-            <span className="font-bold">Profile Updated!</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
+    return res.status(405).json({ error: 'Method not allowed' });
+  } catch (error: any) {
+    console.error("Database Error:", error);
+    // This sends a JSON error instead of a plain text "A server error..."
+    return res.status(500).json({ error: error.message });
+  }
 }
