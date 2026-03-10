@@ -22,12 +22,14 @@ export default function ProfileSection() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
     fetch('/api/profile')
-      .then(res => res.json())
+      .then(res => res.ok ? res.json() : null)
       .then(data => {
-        setProfile(data);
-        setLoading(false);
-      });
+        if (data) setProfile(data);
+      })
+      .catch(err => console.error("Profile fetch error:", err))
+      .finally(() => setLoading(false)); // This stops the "Loading..." text
   }, []);
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
