@@ -41,27 +41,40 @@ export default function OrdersList() {
     setClients(data);
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: any) => {
     if (!confirm('Are you sure you want to delete this order?')) return;
-    const res = await fetch(`/api/orders/${id}`, { method: 'DELETE' });
+    
+    // CHANGED: The URL format now matches our MongoDB backend
+    const res = await fetch(`/api/orders?id=${id}`, { method: 'DELETE' }); 
+    
     if (res.ok) {
-      setOrders(orders.filter(o => o.id !== id));
+      // CHANGED: Checking for both id and _id to be safe with MongoDB
+      setOrders(orders.filter(o => o.id !== id && o._id !== id));
       setShowToast({ message: 'Order deleted successfully', type: 'success' });
+      setTimeout(() => setShowToast(null), 3000);
+    } else {
+      setShowToast({ message: 'Failed to delete order', type: 'error' });
       setTimeout(() => setShowToast(null), 3000);
     }
   };
 
   const handleBulkDelete = async () => {
     if (!confirm(`Are you sure you want to delete ${selectedIds.length} orders?`)) return;
-    const res = await fetch('/api/orders/bulk-delete', {
-      method: 'POST',
+    
+    // CHANGED: URL changed to '/api/orders' and method changed to 'DELETE'
+    const res = await fetch('/api/orders', {
+      method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids: selectedIds })
     });
+    
     if (res.ok) {
-      setOrders(orders.filter(o => !selectedIds.includes(o.id)));
+      setOrders(orders.filter(o => !selectedIds.includes(o.id) && !selectedIds.includes(o._id)));
       setSelectedIds([]);
       setShowToast({ message: 'Orders deleted successfully', type: 'success' });
+      setTimeout(() => setShowToast(null), 3000);
+    } else {
+      setShowToast({ message: 'Failed to delete orders', type: 'error' });
       setTimeout(() => setShowToast(null), 3000);
     }
   };
