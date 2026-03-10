@@ -124,7 +124,7 @@ export default function Dashboard() {
       <div className="bg-indigo-900 rounded-[3rem] p-8 md:p-12 text-white relative overflow-hidden shadow-2xl shadow-indigo-200">
         <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-8">
           <div className="space-y-4 text-center md:text-left">
-            <h2 className="text-3xl font-bold">Ready to scale, Arun?</h2>
+            <h2 className="text-3xl font-bold">Ready to scale, Kanchan?</h2>
             <p className="text-indigo-100 max-w-md">Every order registered helps grow MS Delivery Services. Keep track of your logistics and financials in one place.</p>
             <div className="flex flex-wrap gap-4 justify-center md:justify-start">
               <div className="flex items-center gap-2 bg-indigo-800/50 px-4 py-2 rounded-xl border border-indigo-700">
@@ -149,4 +149,5 @@ export default function Dashboard() {
       </div>
     </div>
   );
+
 }
