@@ -1,42 +1,58 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { MongoClient } from 'mongodb';
 
-const client = new MongoClient(process.env.MONGODB_URI || '');
+let cachedDb: any = null;
+let client: MongoClient | null = null;
+
+async function connectToDatabase() {
+  if (cachedDb) return cachedDb;
+
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    throw new Error('MONGODB_URI is missing in Vercel Environment Variables');
+  }
+
+  if (!client) {
+    client = new MongoClient(uri);
+    await client.connect();
+  }
+
+  const db = client.db('ms-delivery'); 
+  cachedDb = db;
+  return db;
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // CORS Headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   try {
-    await client.connect();
-    const db = client.db('ms-delivery'); // Use your actual database name
+    const db = await connectToDatabase();
     const collection = db.collection('profile');
 
-    // 1. GET: Fetch the profile data
     if (req.method === 'GET') {
       const profile = await collection.findOne({});
-      // If no profile exists yet, return empty defaults
       return res.status(200).json(profile || { 
-        companyName: '', 
-        ownerName: '', 
-        contactEmail: '', 
-        logoUrl: '' 
+        companyName: '', ownerName: '', contactEmail: '', logoUrl: '' 
       });
     }
 
-    // 2. PUT: Save or Update the profile data
     if (req.method === 'PUT') {
-      const updatedProfile = req.body;
-      // This updates the first document it finds, or creates one if it's empty (upsert)
-      await collection.updateOne(
-        {}, 
-        { $set: updatedProfile }, 
-        { upsert: true }
-      );
-      return res.status(200).json({ message: 'Profile updated successfully' });
+      const { _id, ...profileData } = req.body;
+      await collection.updateOne({}, { $set: profileData }, { upsert: true });
+      return res.status(200).json({ message: 'Success' });
     }
 
-    return res.status(405).json({ message: 'Method not allowed' });
-  } catch (error) {
-    return res.status(500).json({ error: 'Database connection failed' });
-  } finally {
-    await client.close();
+    return res.status(405).json({ error: 'Method not allowed' });
+  } catch (error: any) {
+    console.error("API Error:", error.message);
+    // Now it will safely return a JSON error instead of crashing the server
+    return res.status(500).json({ error: error.message });
   }
 }
