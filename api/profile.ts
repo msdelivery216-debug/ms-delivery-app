@@ -12,7 +12,6 @@ async function connectToDatabase() {
     throw new Error('MONGODB_URI is missing in Vercel Environment Variables');
   }
 
-  // Notice how the connection is safely inside the function now!
   if (!client) {
     client = new MongoClient(uri);
     await client.connect();
@@ -52,11 +51,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: error.message });
   }
 }
-// Add this at the bottom of api/profile.ts
+
+// Adjusted to 4mb to stay within Vercel's Free Tier limits
 export const config = {
   api: {
     bodyParser: {
-      sizeLimit: '10mb',
+      sizeLimit: '4mb',
     },
   },
 };
