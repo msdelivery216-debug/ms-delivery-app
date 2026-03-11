@@ -52,8 +52,13 @@ export default function ProfileSection() {
       if (res.ok) {
         setShowToast(true);
         setTimeout(() => setShowToast(false), 3000);
+      } else {
+        // This will pop up an alert if Vercel or MongoDB rejects the save!
+        const errData = await res.json().catch(() => ({}));
+        alert(`Could not save: ${errData.error || res.statusText}`);
       }
     } catch (err) {
+      alert("Network error: Could not reach the server to save.");
       console.error("Failed to save profile:", err);
     }
   };
