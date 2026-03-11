@@ -12,6 +12,7 @@ async function connectToDatabase() {
     throw new Error('MONGODB_URI is missing in Vercel Environment Variables');
   }
 
+  // Notice how the connection is safely inside the function now!
   if (!client) {
     client = new MongoClient(uri);
     await client.connect();
@@ -23,14 +24,11 @@ async function connectToDatabase() {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CORS Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
     const db = await connectToDatabase();
@@ -51,8 +49,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error: any) {
-    console.error("API Error:", error.message);
-    // Safely returns a JSON error instead of crashing the server
     return res.status(500).json({ error: error.message });
   }
 }
