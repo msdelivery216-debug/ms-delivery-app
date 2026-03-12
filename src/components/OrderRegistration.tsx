@@ -21,7 +21,7 @@ export default function OrderRegistration() {
   const [showSuccess, setShowSuccess] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
-    orderNumber: `ORD-${Date.now().toString().slice(-6)}`,
+    orderNumber: '',
     orderDate: format(new Date(), 'yyyy-MM-dd'),
     clientId: '',
     pickupLocation: '',
@@ -430,4 +430,5 @@ export default function OrderRegistration() {
       </AnimatePresence>
     </div>
   );
+
 }
