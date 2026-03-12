@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Trash2, Edit, Calendar, User, MapPin, Package, X, Save } from 'lucide-react';
+import { Search, Trash2, Edit, Calendar, User, MapPin, Package, X, Save, Download } from 'lucide-react';
 import { formatCurrency } from '../lib/utils';
 import { format } from 'date-fns';
 
@@ -9,7 +9,6 @@ export default function OrdersList() {
   const [loading, setLoading] = useState(true);
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   
-  // NEW: State to hold the order we are currently editing
   const [editingOrder, setEditingOrder] = useState<any | null>(null);
 
   useEffect(() => {
@@ -71,12 +70,10 @@ export default function OrdersList() {
     }
   };
 
-  // NEW: Open the modal with the selected order
   const handleEdit = (order: any) => {
-    setEditingOrder({ ...order }); // Create a copy of the order to edit safely
+    setEditingOrder({ ...order }); 
   };
 
-  // NEW: Save the edits to the database
   const handleUpdateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -87,14 +84,65 @@ export default function OrdersList() {
       });
 
       if (res.ok) {
-        setEditingOrder(null); // Close the modal
-        fetchOrders(); // Refresh the list to show new data
+        setEditingOrder(null); 
+        fetchOrders(); 
       } else {
         alert("Failed to save updates. Make sure your API supports PUT requests.");
       }
     } catch (error) {
       console.error("Update failed:", error);
     }
+  };
+
+  // NEW: EXPORT TO EXCEL FUNCTION
+  const handleExport = () => {
+    if (filteredOrders.length === 0) {
+      alert("No orders available to export!");
+      return;
+    }
+
+    // 1. Define the Excel Column Headers
+    const headers = [
+      "Order Number", "Order Date", "Customer Name", "Customer Contact", 
+      "Pickup Location", "Drop Location", "Map Pin URL", "Outsource Name", 
+      "Outsource Charges (AED)", "Delivery Charges (AED)", "Profit (AED)", 
+      "Units", "Payment Mode", "Remark"
+    ];
+
+    // 2. Map the data to match the headers
+    const csvData = filteredOrders.map(order => {
+      // Clean up text fields to prevent commas from breaking the Excel columns
+      const cleanText = (text: any) => `"${(text || '').toString().replace(/"/g, '""')}"`;
+      
+      return [
+        cleanText(order.orderNumber),
+        order.orderDate ? format(new Date(order.orderDate), 'yyyy-MM-dd') : '',
+        cleanText(order.customerName),
+        cleanText(order.customerContact),
+        cleanText(order.pickupLocation),
+        cleanText(order.dropLocation),
+        cleanText(order.mapPinUrl),
+        cleanText(order.outsourceName),
+        order.outsourceCharges || 0,
+        order.deliveryCharges || 0,
+        (order.deliveryCharges || 0) - (order.outsourceCharges || 0),
+        order.units || 1,
+        cleanText(order.modeOfPayment),
+        cleanText(order.remark)
+      ].join(',');
+    });
+
+    // 3. Combine headers and data, then trigger download
+    const csvContent = [headers.join(','), ...csvData].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `MS_Delivery_Orders_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const filteredOrders = orders.filter(order => 
@@ -129,7 +177,8 @@ export default function OrdersList() {
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+      {/* SEARCH AND ACTION BUTTONS */}
+      <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
         <div className="relative w-full flex-1">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-400 w-5 h-5" />
           <input 
@@ -141,15 +190,27 @@ export default function OrdersList() {
           />
         </div>
         
-        <button 
-          onClick={handleBulkDelete}
-          disabled={selectedOrders.length === 0}
-          className={`flex items-center justify-center gap-2 px-6 py-4 font-bold rounded-2xl border transition-all shadow-sm whitespace-nowrap w-full sm:w-auto
-            ${selectedOrders.length > 0 ? 'bg-red-50 text-red-600 border-red-100 hover:bg-red-100 cursor-pointer' : 'bg-neutral-50 text-neutral-400 border-neutral-200 cursor-not-allowed opacity-60'}`}
-        >
-          <Trash2 className="w-5 h-5" />
-          Delete Selected {selectedOrders.length > 0 ? `(${selectedOrders.length})` : ''}
-        </button>
+        <div className="flex w-full lg:w-auto items-center gap-3">
+          {/* EXPORT BUTTON */}
+          <button 
+            onClick={handleExport}
+            className="flex-1 lg:flex-none flex items-center justify-center gap-2 px-6 py-4 font-bold rounded-2xl border transition-all shadow-sm whitespace-nowrap bg-white text-indigo-600 border-neutral-200 hover:bg-indigo-50"
+          >
+            <Download className="w-5 h-5" />
+            Export to Excel
+          </button>
+
+          {/* BULK DELETE BUTTON */}
+          <button 
+            onClick={handleBulkDelete}
+            disabled={selectedOrders.length === 0}
+            className={`flex-1 lg:flex-none flex items-center justify-center gap-2 px-6 py-4 font-bold rounded-2xl border transition-all shadow-sm whitespace-nowrap
+              ${selectedOrders.length > 0 ? 'bg-red-50 text-red-600 border-red-100 hover:bg-red-100 cursor-pointer' : 'bg-neutral-50 text-neutral-400 border-neutral-200 cursor-not-allowed opacity-60'}`}
+          >
+            <Trash2 className="w-5 h-5" />
+            Delete Selected {selectedOrders.length > 0 ? `(${selectedOrders.length})` : ''}
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-[2rem] border border-neutral-100 shadow-xl overflow-hidden">
@@ -158,71 +219,4 @@ export default function OrdersList() {
             <thead>
               <tr className="bg-neutral-50 border-b border-neutral-100">
                 <th className="px-6 py-4 w-12">
-                  <input type="checkbox" className="w-4 h-4 rounded border-neutral-300 text-indigo-600 cursor-pointer" onChange={handleSelectAll} checked={selectedOrders.length === filteredOrders.length && filteredOrders.length > 0} />
-                </th>
-                <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase">Order Details</th>
-                <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase">Customer</th>
-                <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase">Locations</th>
-                <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase">Financials (AED)</th>
-                <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-50">
-              {filteredOrders.map((order) => {
-                const orderId = order._id || order.id;
-                return (
-                  <tr key={orderId} className={`hover:bg-neutral-50/50 transition-colors ${selectedOrders.includes(orderId) ? 'bg-indigo-50/30' : ''}`}>
-                    <td className="px-6 py-4">
-                      <input type="checkbox" className="w-4 h-4 rounded border-neutral-300 text-indigo-600 cursor-pointer" checked={selectedOrders.includes(orderId)} onChange={() => handleSelectOne(orderId)} />
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col">
-                        <span className="font-bold text-indigo-600">{order.orderNumber}</span>
-                        <span className="text-xs text-neutral-400 flex items-center gap-1 mt-1">
-                          <Calendar className="w-3 h-3" /> {order.orderDate ? format(new Date(order.orderDate), 'dd MMM yyyy') : 'N/A'}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-blue-50 rounded-lg text-blue-600"><User className="w-4 h-4" /></div>
-                        <div className="flex flex-col">
-                          <span className="font-bold text-neutral-800">{order.customerName}</span>
-                          <span className="text-xs text-neutral-500">{order.customerContact}</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 max-w-[200px]">
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-start gap-1 text-xs"><MapPin className="w-3 h-3 text-emerald-500 mt-0.5 shrink-0" /><span className="truncate text-neutral-600">{order.pickupLocation}</span></div>
-                        <div className="flex items-start gap-1 text-xs"><Package className="w-3 h-3 text-orange-500 mt-0.5 shrink-0" /><span className="truncate text-neutral-600 font-medium">{order.dropLocation}</span></div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-bold text-neutral-800">Del: {order.deliveryCharges || 0}</span>
-                        <span className="text-[10px] text-neutral-400">Out: {order.outsourceCharges || 0}</span>
-                        <span className="text-xs font-bold text-emerald-600 mt-1">Profit: {(order.deliveryCharges || 0) - (order.outsourceCharges || 0)}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center justify-end gap-2">
-                        <button onClick={() => handleEdit(order)} className="p-2 text-neutral-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title="Edit Order"><Edit className="w-5 h-5" /></button>
-                        <button onClick={() => handleDelete(orderId)} className="p-2 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all" title="Delete Order"><Trash2 className="w-5 h-5" /></button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {filteredOrders.length === 0 && <div className="text-center py-12 text-neutral-500 font-medium">No orders found.</div>}
-        </div>
-      </div>
-
-      {/* NEW: THE EDIT MODAL */}
-      {editingOrder && (
-        <div className="fixed inset-0 bg-neutral-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2.5rem] w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            
-            <div className
+                  <input type="checkbox" className="w-4 h-4 rounded border-neutral-300 text-
