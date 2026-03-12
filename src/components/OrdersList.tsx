@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Trash2, Edit, Calendar, User, MapPin, Package } from 'lucide-react';
+import { Search, Trash2, Edit, Calendar, User, MapPin, Package, X, Save } from 'lucide-react';
 import { formatCurrency } from '../lib/utils';
 import { format } from 'date-fns';
 
@@ -8,6 +8,9 @@ export default function OrdersList() {
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
+  
+  // NEW: State to hold the order we are currently editing
+  const [editingOrder, setEditingOrder] = useState<any | null>(null);
 
   useEffect(() => {
     fetchOrders();
@@ -27,10 +30,8 @@ export default function OrdersList() {
     }
   };
 
-  // --- CHECKBOX HANDLERS ---
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
-      // Safely grab the ID whether it's stored as _id or id
       setSelectedOrders(filteredOrders.map(order => order._id || order.id));
     } else {
       setSelectedOrders([]);
@@ -40,24 +41,18 @@ export default function OrdersList() {
   const handleSelectOne = (id: string) => {
     if (!id) return;
     setSelectedOrders(prev => 
-      prev.includes(id) 
-        ? prev.filter(orderId => orderId !== id) 
-        : [...prev, id]
+      prev.includes(id) ? prev.filter(orderId => orderId !== id) : [...prev, id]
     );
   };
 
-  // --- ACTION BUTTON HANDLERS ---
   const handleDelete = async (id: string) => {
     if (!window.confirm("Are you sure you want to delete this order?")) return;
-    
     try {
       const res = await fetch(`/api/orders?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
         setOrders(orders.filter(order => (order._id || order.id) !== id));
         setSelectedOrders(prev => prev.filter(orderId => orderId !== id));
-      } else {
-        alert("Failed to delete order from database.");
-      }
+      } else alert("Failed to delete order from database.");
     } catch (error) {
       console.error("Delete failed:", error);
     }
@@ -65,28 +60,43 @@ export default function OrdersList() {
 
   const handleBulkDelete = async () => {
     if (selectedOrders.length === 0) return;
-    if (!window.confirm(`Are you sure you want to delete ${selectedOrders.length} selected orders? This cannot be undone.`)) return;
-    
+    if (!window.confirm(`Are you sure you want to delete ${selectedOrders.length} selected orders?`)) return;
     try {
-      await Promise.all(
-        selectedOrders.map(id => 
-          fetch(`/api/orders?id=${id}`, { method: 'DELETE' })
-        )
-      );
+      await Promise.all(selectedOrders.map(id => fetch(`/api/orders?id=${id}`, { method: 'DELETE' })));
       setOrders(orders.filter(order => !selectedOrders.includes(order._id || order.id)));
       setSelectedOrders([]);
     } catch (error) {
       console.error("Bulk delete failed:", error);
-      alert("There was an error deleting some orders. Refreshing the list.");
       fetchOrders(); 
     }
   };
 
+  // NEW: Open the modal with the selected order
   const handleEdit = (order: any) => {
-    alert(`Edit button clicked for Order: ${order.orderNumber}. We will route this to the edit page next!`);
+    setEditingOrder({ ...order }); // Create a copy of the order to edit safely
   };
 
-  // Filter logic
+  // NEW: Save the edits to the database
+  const handleUpdateOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/orders', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editingOrder)
+      });
+
+      if (res.ok) {
+        setEditingOrder(null); // Close the modal
+        fetchOrders(); // Refresh the list to show new data
+      } else {
+        alert("Failed to save updates. Make sure your API supports PUT requests.");
+      }
+    } catch (error) {
+      console.error("Update failed:", error);
+    }
+  };
+
   const filteredOrders = orders.filter(order => 
     order.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     order.orderNumber?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -106,7 +116,7 @@ export default function OrdersList() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-bold text-neutral-900">All Orders</h1>
@@ -131,14 +141,11 @@ export default function OrdersList() {
           />
         </div>
         
-        {/* Bulk Delete Button - Now ALWAYS visible, but disabled if nothing is selected */}
         <button 
           onClick={handleBulkDelete}
           disabled={selectedOrders.length === 0}
           className={`flex items-center justify-center gap-2 px-6 py-4 font-bold rounded-2xl border transition-all shadow-sm whitespace-nowrap w-full sm:w-auto
-            ${selectedOrders.length > 0 
-              ? 'bg-red-50 text-red-600 border-red-100 hover:bg-red-100 cursor-pointer' 
-              : 'bg-neutral-50 text-neutral-400 border-neutral-200 cursor-not-allowed opacity-60'}`}
+            ${selectedOrders.length > 0 ? 'bg-red-50 text-red-600 border-red-100 hover:bg-red-100 cursor-pointer' : 'bg-neutral-50 text-neutral-400 border-neutral-200 cursor-not-allowed opacity-60'}`}
         >
           <Trash2 className="w-5 h-5" />
           Delete Selected {selectedOrders.length > 0 ? `(${selectedOrders.length})` : ''}
@@ -151,12 +158,7 @@ export default function OrdersList() {
             <thead>
               <tr className="bg-neutral-50 border-b border-neutral-100">
                 <th className="px-6 py-4 w-12">
-                  <input 
-                    type="checkbox" 
-                    className="w-4 h-4 rounded border-neutral-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                    onChange={handleSelectAll}
-                    checked={selectedOrders.length === filteredOrders.length && filteredOrders.length > 0}
-                  />
+                  <input type="checkbox" className="w-4 h-4 rounded border-neutral-300 text-indigo-600 cursor-pointer" onChange={handleSelectAll} checked={selectedOrders.length === filteredOrders.length && filteredOrders.length > 0} />
                 </th>
                 <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase">Order Details</th>
                 <th className="px-6 py-4 text-xs font-bold text-neutral-400 uppercase">Customer</th>
@@ -167,16 +169,11 @@ export default function OrdersList() {
             </thead>
             <tbody className="divide-y divide-neutral-50">
               {filteredOrders.map((order) => {
-                const orderId = order._id || order.id; // Safe ID check
+                const orderId = order._id || order.id;
                 return (
                   <tr key={orderId} className={`hover:bg-neutral-50/50 transition-colors ${selectedOrders.includes(orderId) ? 'bg-indigo-50/30' : ''}`}>
                     <td className="px-6 py-4">
-                      <input 
-                        type="checkbox" 
-                        className="w-4 h-4 rounded border-neutral-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                        checked={selectedOrders.includes(orderId)}
-                        onChange={() => handleSelectOne(orderId)}
-                      />
+                      <input type="checkbox" className="w-4 h-4 rounded border-neutral-300 text-indigo-600 cursor-pointer" checked={selectedOrders.includes(orderId)} onChange={() => handleSelectOne(orderId)} />
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
@@ -188,9 +185,7 @@ export default function OrdersList() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
-                          <User className="w-4 h-4" />
-                        </div>
+                        <div className="p-2 bg-blue-50 rounded-lg text-blue-600"><User className="w-4 h-4" /></div>
                         <div className="flex flex-col">
                           <span className="font-bold text-neutral-800">{order.customerName}</span>
                           <span className="text-xs text-neutral-500">{order.customerContact}</span>
@@ -199,41 +194,21 @@ export default function OrdersList() {
                     </td>
                     <td className="px-6 py-4 max-w-[200px]">
                       <div className="flex flex-col gap-1">
-                        <div className="flex items-start gap-1 text-xs">
-                          <MapPin className="w-3 h-3 text-emerald-500 mt-0.5 shrink-0" />
-                          <span className="truncate text-neutral-600">{order.pickupLocation}</span>
-                        </div>
-                        <div className="flex items-start gap-1 text-xs">
-                          <Package className="w-3 h-3 text-orange-500 mt-0.5 shrink-0" />
-                          <span className="truncate text-neutral-600 font-medium">{order.dropLocation}</span>
-                        </div>
+                        <div className="flex items-start gap-1 text-xs"><MapPin className="w-3 h-3 text-emerald-500 mt-0.5 shrink-0" /><span className="truncate text-neutral-600">{order.pickupLocation}</span></div>
+                        <div className="flex items-start gap-1 text-xs"><Package className="w-3 h-3 text-orange-500 mt-0.5 shrink-0" /><span className="truncate text-neutral-600 font-medium">{order.dropLocation}</span></div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex flex-col">
                         <span className="text-sm font-bold text-neutral-800">Del: {order.deliveryCharges || 0}</span>
                         <span className="text-[10px] text-neutral-400">Out: {order.outsourceCharges || 0}</span>
-                        <span className="text-xs font-bold text-emerald-600 mt-1">
-                          Profit: {(order.deliveryCharges || 0) - (order.outsourceCharges || 0)}
-                        </span>
+                        <span className="text-xs font-bold text-emerald-600 mt-1">Profit: {(order.deliveryCharges || 0) - (order.outsourceCharges || 0)}</span>
                       </div>
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-2">
-                        <button 
-                          onClick={() => handleEdit(order)}
-                          className="p-2 text-neutral-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
-                          title="Edit Order"
-                        >
-                          <Edit className="w-5 h-5" />
-                        </button>
-                        <button 
-                          onClick={() => handleDelete(orderId)}
-                          className="p-2 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
-                          title="Delete Order"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
+                        <button onClick={() => handleEdit(order)} className="p-2 text-neutral-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all" title="Edit Order"><Edit className="w-5 h-5" /></button>
+                        <button onClick={() => handleDelete(orderId)} className="p-2 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all" title="Delete Order"><Trash2 className="w-5 h-5" /></button>
                       </div>
                     </td>
                   </tr>
@@ -241,13 +216,13 @@ export default function OrdersList() {
               })}
             </tbody>
           </table>
-          {filteredOrders.length === 0 && (
-            <div className="text-center py-12 text-neutral-500 font-medium">
-              No orders found.
-            </div>
-          )}
+          {filteredOrders.length === 0 && <div className="text-center py-12 text-neutral-500 font-medium">No orders found.</div>}
         </div>
       </div>
-    </div>
-  );
-}
+
+      {/* NEW: THE EDIT MODAL */}
+      {editingOrder && (
+        <div className="fixed inset-0 bg-neutral-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            
+            <div className
