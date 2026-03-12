@@ -171,4 +171,75 @@ export default function OrdersList() {
                       onChange={() => handleSelectOne(order._id)}
                     />
                   </td>
-                  <td className="
+                  <td className="px-6 py-4">
+                    <div className="flex flex-col">
+                      <span className="font-bold text-indigo-600">{order.orderNumber}</span>
+                      <span className="text-xs text-neutral-400 flex items-center gap-1 mt-1">
+                        <Calendar className="w-3 h-3" /> {order.orderDate ? format(new Date(order.orderDate), 'dd MMM yyyy') : 'N/A'}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
+                        <User className="w-4 h-4" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="font-bold text-neutral-800">{order.customerName}</span>
+                        <span className="text-xs text-neutral-500">{order.customerContact}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 max-w-[200px]">
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-start gap-1 text-xs">
+                        <MapPin className="w-3 h-3 text-emerald-500 mt-0.5 shrink-0" />
+                        <span className="truncate text-neutral-600">{order.pickupLocation}</span>
+                      </div>
+                      <div className="flex items-start gap-1 text-xs">
+                        <Package className="w-3 h-3 text-orange-500 mt-0.5 shrink-0" />
+                        <span className="truncate text-neutral-600 font-medium">{order.dropLocation}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex flex-col">
+                      <span className="text-sm font-bold text-neutral-800">Del: {order.deliveryCharges || 0}</span>
+                      <span className="text-[10px] text-neutral-400">Out: {order.outsourceCharges || 0}</span>
+                      <span className="text-xs font-bold text-emerald-600 mt-1">
+                        Profit: {(order.deliveryCharges || 0) - (order.outsourceCharges || 0)}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center justify-end gap-2">
+                      <button 
+                        onClick={() => handleEdit(order)}
+                        className="p-2 text-neutral-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                        title="Edit Order"
+                      >
+                        <Edit className="w-5 h-5" />
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(order._id)}
+                        className="p-2 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                        title="Delete Order"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filteredOrders.length === 0 && (
+            <div className="text-center py-12 text-neutral-500 font-medium">
+              No orders found.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
