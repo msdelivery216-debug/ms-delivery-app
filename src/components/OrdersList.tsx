@@ -30,13 +30,15 @@ export default function OrdersList() {
   // --- CHECKBOX HANDLERS ---
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
-      setSelectedOrders(filteredOrders.map(order => order._id));
+      // Safely grab the ID whether it's stored as _id or id
+      setSelectedOrders(filteredOrders.map(order => order._id || order.id));
     } else {
       setSelectedOrders([]);
     }
   };
 
   const handleSelectOne = (id: string) => {
+    if (!id) return;
     setSelectedOrders(prev => 
       prev.includes(id) 
         ? prev.filter(orderId => orderId !== id) 
@@ -51,7 +53,7 @@ export default function OrdersList() {
     try {
       const res = await fetch(`/api/orders?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
-        setOrders(orders.filter(order => order._id !== id));
+        setOrders(orders.filter(order => (order._id || order.id) !== id));
         setSelectedOrders(prev => prev.filter(orderId => orderId !== id));
       } else {
         alert("Failed to delete order from database.");
@@ -62,6 +64,7 @@ export default function OrdersList() {
   };
 
   const handleBulkDelete = async () => {
+    if (selectedOrders.length === 0) return;
     if (!window.confirm(`Are you sure you want to delete ${selectedOrders.length} selected orders? This cannot be undone.`)) return;
     
     try {
@@ -70,7 +73,7 @@ export default function OrdersList() {
           fetch(`/api/orders?id=${id}`, { method: 'DELETE' })
         )
       );
-      setOrders(orders.filter(order => !selectedOrders.includes(order._id)));
+      setOrders(orders.filter(order => !selectedOrders.includes(order._id || order.id)));
       setSelectedOrders([]);
     } catch (error) {
       console.error("Bulk delete failed:", error);
@@ -128,16 +131,18 @@ export default function OrdersList() {
           />
         </div>
         
-        {/* Bulk Delete Button - Only shows when checkboxes are selected */}
-        {selectedOrders.length > 0 && (
-          <button 
-            onClick={handleBulkDelete}
-            className="flex items-center justify-center gap-2 px-6 py-4 bg-red-50 text-red-600 font-bold rounded-2xl border border-red-100 hover:bg-red-100 transition-all shadow-sm whitespace-nowrap"
-          >
-            <Trash2 className="w-5 h-5" />
-            Delete Selected ({selectedOrders.length})
-          </button>
-        )}
+        {/* Bulk Delete Button - Now ALWAYS visible, but disabled if nothing is selected */}
+        <button 
+          onClick={handleBulkDelete}
+          disabled={selectedOrders.length === 0}
+          className={`flex items-center justify-center gap-2 px-6 py-4 font-bold rounded-2xl border transition-all shadow-sm whitespace-nowrap w-full sm:w-auto
+            ${selectedOrders.length > 0 
+              ? 'bg-red-50 text-red-600 border-red-100 hover:bg-red-100 cursor-pointer' 
+              : 'bg-neutral-50 text-neutral-400 border-neutral-200 cursor-not-allowed opacity-60'}`}
+        >
+          <Trash2 className="w-5 h-5" />
+          Delete Selected {selectedOrders.length > 0 ? `(${selectedOrders.length})` : ''}
+        </button>
       </div>
 
       <div className="bg-white rounded-[2rem] border border-neutral-100 shadow-xl overflow-hidden">
@@ -161,76 +166,79 @@ export default function OrdersList() {
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-50">
-              {filteredOrders.map((order) => (
-                <tr key={order._id} className={`hover:bg-neutral-50/50 transition-colors ${selectedOrders.includes(order._id) ? 'bg-indigo-50/30' : ''}`}>
-                  <td className="px-6 py-4">
-                    <input 
-                      type="checkbox" 
-                      className="w-4 h-4 rounded border-neutral-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                      checked={selectedOrders.includes(order._id)}
-                      onChange={() => handleSelectOne(order._id)}
-                    />
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex flex-col">
-                      <span className="font-bold text-indigo-600">{order.orderNumber}</span>
-                      <span className="text-xs text-neutral-400 flex items-center gap-1 mt-1">
-                        <Calendar className="w-3 h-3" /> {order.orderDate ? format(new Date(order.orderDate), 'dd MMM yyyy') : 'N/A'}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
-                        <User className="w-4 h-4" />
-                      </div>
+              {filteredOrders.map((order) => {
+                const orderId = order._id || order.id; // Safe ID check
+                return (
+                  <tr key={orderId} className={`hover:bg-neutral-50/50 transition-colors ${selectedOrders.includes(orderId) ? 'bg-indigo-50/30' : ''}`}>
+                    <td className="px-6 py-4">
+                      <input 
+                        type="checkbox" 
+                        className="w-4 h-4 rounded border-neutral-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                        checked={selectedOrders.includes(orderId)}
+                        onChange={() => handleSelectOne(orderId)}
+                      />
+                    </td>
+                    <td className="px-6 py-4">
                       <div className="flex flex-col">
-                        <span className="font-bold text-neutral-800">{order.customerName}</span>
-                        <span className="text-xs text-neutral-500">{order.customerContact}</span>
+                        <span className="font-bold text-indigo-600">{order.orderNumber}</span>
+                        <span className="text-xs text-neutral-400 flex items-center gap-1 mt-1">
+                          <Calendar className="w-3 h-3" /> {order.orderDate ? format(new Date(order.orderDate), 'dd MMM yyyy') : 'N/A'}
+                        </span>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 max-w-[200px]">
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-start gap-1 text-xs">
-                        <MapPin className="w-3 h-3 text-emerald-500 mt-0.5 shrink-0" />
-                        <span className="truncate text-neutral-600">{order.pickupLocation}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-blue-50 rounded-lg text-blue-600">
+                          <User className="w-4 h-4" />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="font-bold text-neutral-800">{order.customerName}</span>
+                          <span className="text-xs text-neutral-500">{order.customerContact}</span>
+                        </div>
                       </div>
-                      <div className="flex items-start gap-1 text-xs">
-                        <Package className="w-3 h-3 text-orange-500 mt-0.5 shrink-0" />
-                        <span className="truncate text-neutral-600 font-medium">{order.dropLocation}</span>
+                    </td>
+                    <td className="px-6 py-4 max-w-[200px]">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-start gap-1 text-xs">
+                          <MapPin className="w-3 h-3 text-emerald-500 mt-0.5 shrink-0" />
+                          <span className="truncate text-neutral-600">{order.pickupLocation}</span>
+                        </div>
+                        <div className="flex items-start gap-1 text-xs">
+                          <Package className="w-3 h-3 text-orange-500 mt-0.5 shrink-0" />
+                          <span className="truncate text-neutral-600 font-medium">{order.dropLocation}</span>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex flex-col">
-                      <span className="text-sm font-bold text-neutral-800">Del: {order.deliveryCharges || 0}</span>
-                      <span className="text-[10px] text-neutral-400">Out: {order.outsourceCharges || 0}</span>
-                      <span className="text-xs font-bold text-emerald-600 mt-1">
-                        Profit: {(order.deliveryCharges || 0) - (order.outsourceCharges || 0)}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center justify-end gap-2">
-                      <button 
-                        onClick={() => handleEdit(order)}
-                        className="p-2 text-neutral-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
-                        title="Edit Order"
-                      >
-                        <Edit className="w-5 h-5" />
-                      </button>
-                      <button 
-                        onClick={() => handleDelete(order._id)}
-                        className="p-2 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
-                        title="Delete Order"
-                      >
-                        <Trash2 className="w-5 h-5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-neutral-800">Del: {order.deliveryCharges || 0}</span>
+                        <span className="text-[10px] text-neutral-400">Out: {order.outsourceCharges || 0}</span>
+                        <span className="text-xs font-bold text-emerald-600 mt-1">
+                          Profit: {(order.deliveryCharges || 0) - (order.outsourceCharges || 0)}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-end gap-2">
+                        <button 
+                          onClick={() => handleEdit(order)}
+                          className="p-2 text-neutral-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                          title="Edit Order"
+                        >
+                          <Edit className="w-5 h-5" />
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(orderId)}
+                          className="p-2 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                          title="Delete Order"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
           {filteredOrders.length === 0 && (
