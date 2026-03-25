@@ -45,6 +45,16 @@ db.exec(`
     logoUrl TEXT
   );
 
+  -- NEW: Ledger table for manual payments
+  CREATE TABLE IF NOT EXISTS ledger (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    partnerId TEXT NOT NULL, -- Prefix with 'cli-' for clients, 'drv-' for outsources
+    date TEXT NOT NULL,
+    description TEXT,
+    type TEXT NOT NULL,
+    amount REAL DEFAULT 0
+  );
+
   INSERT OR IGNORE INTO profile (id, companyName, ownerName, contactEmail) 
   VALUES (1, 'MS Delivery Services', 'Admin', 'admin@msdelivery.com');
 `);
@@ -53,16 +63,12 @@ async function startServer() {
   const app = express();
   app.use(express.json({ limit: '10mb' }));
 
-  // API Routes
-  
   // Auth Middleware (Simple)
   const auth = (req: any, res: any, next: any) => {
-    // In a real app, use JWT or sessions. For this demo, we'll check a header or just allow for now
-    // since the frontend handles the login state.
     next();
   };
 
-  // Clients API
+  // --- Clients API ---
   app.get("/api/clients", (req, res) => {
     const clients = db.prepare("SELECT * FROM clients ORDER BY clientName ASC").all();
     res.json(clients);
@@ -96,7 +102,7 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  // Orders API
+  // --- Orders API ---
   app.get("/api/orders", (req, res) => {
     const orders = db.prepare(`
       SELECT o.*, c.clientName 
@@ -167,7 +173,7 @@ async function startServer() {
     res.json({ success: true });
   });
 
-  // Profile API
+  // --- Profile API ---
   app.get("/api/profile", (req, res) => {
     const profile = db.prepare("SELECT * FROM profile WHERE id = 1").get();
     res.json(profile);
@@ -181,6 +187,182 @@ async function startServer() {
       WHERE id = 1
     `).run(companyName, ownerName, contactEmail, logoUrl);
     res.json({ success: true });
+  });
+
+  // ==========================================
+  // NEW: ACCOUNTING & DASHBOARD ROUTES
+  // ==========================================
+
+  // Combine clients and outsource drivers into a single list for the sidebar
+  app.get("/api/partners", (req, res) => {
+    const clients = db.prepare("SELECT id, clientName as name FROM clients ORDER BY name ASC").all();
+    const formattedClients = clients.map((c: any) => ({ id: `cli-${c.id}`, name: c.name, type: 'CLIENT' }));
+
+    const outsources = db.prepare("SELECT DISTINCT outsourceName as name FROM orders WHERE outsourceName IS NOT NULL AND outsourceName != '' ORDER BY name ASC").all();
+    const formattedOutsources = outsources.map((o: any) => ({ id: `drv-${o.name}`, name: o.name, type: 'OUTSOURCE' }));
+
+    res.json([...formattedOutsources, ...formattedClients]);
+  });
+
+  // Fetch the combined ledger (Orders + Manual Payments) for a specific partner
+  app.get("/api/ledger", (req, res) => {
+    const { partnerId } = req.query;
+    if (!partnerId || typeof partnerId !== 'string') return res.status(400).json({ error: "partnerId required" });
+
+    const entries = [];
+
+    // 1. Fetch manual payments from ledger table
+    const manualEntries = db.prepare("SELECT * FROM ledger WHERE partnerId = ? ORDER BY date DESC").all(partnerId);
+    entries.push(...manualEntries.map((e: any) => ({
+      id: `manual-${e.id}`,
+      partnerId: e.partnerId,
+      date: e.date,
+      description: e.description,
+      type: e.type,
+      partnerShare: 0,
+      myShare: 0,
+      amount: e.amount,
+      isManual: true
+    })));
+
+    // 2. Fetch order-related entries
+    if (partnerId.startsWith('cli-')) {
+      const clientId = partnerId.replace('cli-', '');
+      const orderEntries = db.prepare(`
+        SELECT id, orderDate, orderNumber, modeOfPayment, outsourceCharges, deliveryCharges 
+        FROM orders WHERE clientId = ?
+      `).all(clientId);
+
+      entries.push(...orderEntries.map((o: any) => {
+        // Based on logic: If CLIENT_PAID (Pre-paid), you hold driver's money (- outsourceCharges)
+        // If COP/COD, the driver/agency holds your money (+ deliveryCharges - outsourceCharges)
+        let type = o.modeOfPayment; // Assuming modeOfPayment is COP, COD, or PREPAID/CLIENT_PAID
+        let partnerShare = type === 'CLIENT_PAID' || type === 'PREPAID' ? o.outsourceCharges : 0;
+        let myShare = type === 'COP' || type === 'COD' ? (o.deliveryCharges - o.outsourceCharges) : 0;
+
+        return {
+          id: `order-${o.id}`,
+          partnerId,
+          date: o.orderDate,
+          description: `Order ${o.orderNumber}`,
+          type: type || 'UNKNOWN',
+          partnerShare: partnerShare,
+          myShare: myShare > 0 ? myShare : 0, 
+          amount: 0,
+          isManual: false
+        };
+      }));
+    } else if (partnerId.startsWith('drv-')) {
+      const drvName = partnerId.replace('drv-', '');
+      const orderEntries = db.prepare(`
+        SELECT id, orderDate, orderNumber, modeOfPayment, outsourceCharges, deliveryCharges 
+        FROM orders WHERE outsourceName = ?
+      `).all(drvName);
+
+      entries.push(...orderEntries.map((o: any) => {
+        let type = o.modeOfPayment;
+        let partnerShare = type === 'CLIENT_PAID' || type === 'PREPAID' ? o.outsourceCharges : 0;
+        let myShare = type === 'COP' || type === 'COD' ? (o.deliveryCharges - o.outsourceCharges) : 0;
+
+        return {
+          id: `order-${o.id}`,
+          partnerId,
+          date: o.orderDate,
+          description: `Order ${o.orderNumber}`,
+          type: type || 'UNKNOWN',
+          partnerShare: partnerShare,
+          myShare: myShare > 0 ? myShare : 0,
+          amount: 0,
+          isManual: false
+        };
+      }));
+    }
+
+    // Sort combined array by date descending
+    entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    res.json(entries);
+  });
+
+  // Create manual payment
+  app.post("/api/ledger", (req, res) => {
+    const { partnerId, date, description, type, amount } = req.body;
+    try {
+      const info = db.prepare(`
+        INSERT INTO ledger (partnerId, date, description, type, amount) 
+        VALUES (?, ?, ?, ?, ?)
+      `).run(partnerId, date, description, type, amount);
+      
+      res.json({ 
+        id: `manual-${info.lastInsertRowid}`, 
+        partnerId, date, description, type, amount, partnerShare: 0, myShare: 0, isManual: true 
+      });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // Update manual payment
+  app.put("/api/ledger/:id", (req, res) => {
+    const rawId = req.params.id;
+    if (!rawId.startsWith('manual-')) return res.status(400).json({ error: "Can only edit manual payments" });
+    
+    const dbId = rawId.replace('manual-', '');
+    const { amount, type } = req.body;
+    
+    db.prepare("UPDATE ledger SET amount = ?, type = ? WHERE id = ?").run(amount, type, dbId);
+    res.json({ success: true });
+  });
+
+  // Delete manual payment
+  app.delete("/api/ledger/:id", (req, res) => {
+    const rawId = req.params.id;
+    if (!rawId.startsWith('manual-')) return res.status(400).json({ error: "Can only delete manual payments" });
+    
+    const dbId = rawId.replace('manual-', '');
+    db.prepare("DELETE FROM ledger WHERE id = ?").run(dbId);
+    res.json({ success: true });
+  });
+
+  // Dashboard Stats
+  app.get("/api/dashboard-stats", (req, res) => {
+    try {
+      const orders = db.prepare("SELECT COUNT(*) as total FROM orders").get();
+      const drivers = db.prepare("SELECT COUNT(DISTINCT outsourceName) as total FROM orders WHERE outsourceName IS NOT NULL AND outsourceName != ''").get();
+      
+      // Calculate Receivables (COP/COD orders) - Money owed to you
+      const receivablesCalc = db.prepare(`
+        SELECT SUM(deliveryCharges - outsourceCharges) as total 
+        FROM orders 
+        WHERE modeOfPayment IN ('COP', 'COD')
+      `).get();
+
+      // Calculate Payables (Client Paid/Prepaid) - Money you owe driver
+      const payablesCalc = db.prepare(`
+        SELECT SUM(outsourceCharges) as total 
+        FROM orders 
+        WHERE modeOfPayment IN ('CLIENT_PAID', 'PREPAID')
+      `).get();
+
+      // Factor in manual payments
+      const manualPaymentsReceived = db.prepare("SELECT SUM(amount) as total FROM ledger WHERE type = 'PAYMENT_RECEIVED'").get();
+      const manualPaymentsSent = db.prepare("SELECT SUM(amount) as total FROM ledger WHERE type = 'PAYMENT_SENT'").get();
+
+      const totalReceivables = (receivablesCalc as any).total || 0;
+      const totalPayables = (payablesCalc as any).total || 0;
+      const received = (manualPaymentsReceived as any).total || 0;
+      const sent = (manualPaymentsSent as any).total || 0;
+
+      res.json({
+        totalDeliveries: (orders as any).total,
+        activeDrivers: (drivers as any).total,
+        // Net out the manual payments from the totals
+        totalReceivables: Math.max(0, totalReceivables - received), 
+        totalPayables: Math.max(0, totalPayables - sent)
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: "Failed to calculate stats" });
+    }
   });
 
   // Vite middleware for development
