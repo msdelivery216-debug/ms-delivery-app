@@ -7,6 +7,7 @@ import OrderRegistration from './components/OrderRegistration';
 import OrdersList from './components/OrdersList';
 import ProfileSection from './components/ProfileSection';
 import Login from './components/Login';
+import PaymentSummary from './components/PaymentSummary'; // <-- Added Import
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
@@ -19,6 +20,7 @@ export default function App() {
     <Router>
       <Routes>
         <Route path="/login" element={<Login />} />
+        
         <Route
           path="/"
           element={
@@ -29,6 +31,7 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        
         <Route
           path="/clients"
           element={
@@ -39,6 +42,7 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        
         <Route
           path="/orders"
           element={
@@ -49,6 +53,7 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        
         <Route
           path="/orders-list"
           element={
@@ -59,6 +64,7 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        
         <Route
           path="/profile"
           element={
@@ -69,28 +75,20 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* --- Added Payment Summary Route --- */}
+        <Route
+          path="/payment-summary"
+          element={
+            <ProtectedRoute>
+              <Layout>
+                <PaymentSummary />
+              </Layout>
+            </ProtectedRoute>
+          }
+        />
+        
         <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Router>
-  );
-}
-// 1. You MUST import the new file at the top
-import PaymentSummary from './pages/PaymentSummary'; // (Adjust the path if you put it in a different folder)
-
-function App() {
-  return (
-    <Router>
-      {/* Your Sidebar/Navigation component goes here */}
-      <nav>
-        {/* ... your existing links ... */}
-        {/* 2. You MUST add a button or link so you can click it */}
-        <Link to="/payment-summary">Payment Summary</Link>
-      </nav>
-
-      <Routes>
-        {/* ... your existing routes ... */}
-        {/* 3. You MUST tell React what to load when the URL changes */}
-        <Route path="/payment-summary" element={<PaymentSummary />} />
       </Routes>
     </Router>
   );
