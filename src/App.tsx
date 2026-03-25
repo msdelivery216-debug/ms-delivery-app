@@ -74,3 +74,24 @@ export default function App() {
     </Router>
   );
 }
+// 1. You MUST import the new file at the top
+import PaymentSummary from './pages/PaymentSummary'; // (Adjust the path if you put it in a different folder)
+
+function App() {
+  return (
+    <Router>
+      {/* Your Sidebar/Navigation component goes here */}
+      <nav>
+        {/* ... your existing links ... */}
+        {/* 2. You MUST add a button or link so you can click it */}
+        <Link to="/payment-summary">Payment Summary</Link>
+      </nav>
+
+      <Routes>
+        {/* ... your existing routes ... */}
+        {/* 3. You MUST tell React what to load when the URL changes */}
+        <Route path="/payment-summary" element={<PaymentSummary />} />
+      </Routes>
+    </Router>
+  );
+}
